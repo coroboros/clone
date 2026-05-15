@@ -9,9 +9,8 @@
 
 Deep clones objects while preserving the prototype chain, property descriptors, boxed primitives, and native types (Map, Set, Date, RegExp, Error subclasses, TypedArray, DataView, ArrayBuffer, Buffer). Cycle-safe via a WeakMap visited cache. Deep-freezes recursively, skipping ArrayBuffer views.
 
-[![ci](https://img.shields.io/github/actions/workflow/status/coroboros/clone/ci.yml?branch=main&style=flat-square&color=000000)](https://github.com/coroboros/clone/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@coroboros/clone?style=flat-square&color=000000)](https://www.npmjs.com/package/@coroboros/clone)
-[![branch](https://img.shields.io/badge/branch-stable-000000?style=flat-square)](https://github.com/coroboros/clone)
+[![ci](https://img.shields.io/github/actions/workflow/status/coroboros/clone/ci.yml?branch=main&style=flat-square&label=ci&color=000000)](https://github.com/coroboros/clone/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-000000?style=flat-square)](https://opensource.org/licenses/MIT)
 [![stars](https://img.shields.io/github/stars/coroboros/clone?style=flat-square&label=stars&color=000000)](https://github.com/coroboros/clone)
 [![coroboros.com](https://img.shields.io/badge/coroboros.com-000000?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiLz48cGF0aCBkPSJNMiAxMmgyME0xMiAyYTE1LjMgMTUuMyAwIDAgMSA0IDEwIDE1LjMgMTUuMyAwIDAgMS00IDEwIDE1LjMgMTUuMyAwIDAgMS00LTEwIDE1LjMgMTUuMyAwIDAgMSA0LTEweiIvPjwvc3ZnPg==)](https://coroboros.com)
