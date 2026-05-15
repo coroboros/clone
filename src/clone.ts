@@ -1,6 +1,6 @@
 import type { Buffer as NodeBuffer } from 'node:buffer';
 import { CloneError } from './error.js';
-import { exists, getType, primitives, typedArrays } from './helpers.js';
+import { exists, getType, primitives } from './helpers.js';
 
 const BufferRef: typeof NodeBuffer | undefined =
   typeof globalThis.Buffer !== 'undefined' ? globalThis.Buffer : undefined;
@@ -198,9 +198,11 @@ const internalClone = (
     return cloned;
   }
 
-  if (typedArrays.has(Constructor)) {
+  // Any remaining ArrayBufferView at this point is a TypedArray (DataView and
+  // Buffer are dispatched above). One isView call replaces a 9-entry Set lookup.
+  if (ArrayBuffer.isView(source)) {
     const Ctor = Constructor as AnyTypedArrayCtor;
-    const cloned = new Ctor(source as ArrayLike<number>);
+    const cloned = new Ctor(source as unknown as ArrayLike<number>);
     remember(visited, source, cloned, opts.cycles);
     return cloned;
   }
@@ -250,9 +252,15 @@ const internalClone = (
   }
 
   if (typeOfThing === 'object') {
-    const placeholder = (
-      opts.preservePrototype ? Object.create(Object.getPrototypeOf(source)) : {}
-    ) as object;
+    let placeholder: object;
+    if (opts.preservePrototype) {
+      const proto = Object.getPrototypeOf(source);
+      // Plain objects (proto === Object.prototype) are the hot path — skip the
+      // Object.create call and use a literal, which V8 compiles into a fast map.
+      placeholder = proto === Object.prototype || proto === null ? {} : Object.create(proto);
+    } else {
+      placeholder = {};
+    }
     remember(visited, source, placeholder, opts.cycles);
     if (opts.copyDescriptors) {
       Object.defineProperties(placeholder, buildDescriptors(source));
