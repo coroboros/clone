@@ -1,0 +1,79 @@
+{
+  "name": "@coroboros/clone",
+  "version": "1.0.0",
+  "description": "Deep clone and deep freeze for JavaScript — prototype-aware.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "keywords": [
+    "coroboros",
+    "clone",
+    "deep-clone",
+    "freeze",
+    "deep-freeze",
+    "structured-clone",
+    "prototype",
+    "typescript",
+    "node"
+  ],
+  "author": "Coroboros <ob@coroboros.com> (https://github.com/coroboros)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coroboros/clone.git"
+  },
+  "bugs": {
+    "url": "https://github.com/coroboros/clone/issues"
+  },
+  "homepage": "https://github.com/coroboros/clone#readme",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "private": false,
+  "preferGlobal": false,
+  "analyze": false,
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "tsdown": "^0.21.9",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
+  }
+}
