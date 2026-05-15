@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.0.1 - 15/05/2026
+
+### Documentation
+- `clone` — align badges with sparkline + switch publish to OIDC (#38)
+
+### Configuration
+- `clone` — bump packageManager to pnpm@11.1.2 for OIDC publishing (#39)
+
+
 ## v1.0.0 - 15/05/2026
 
 Initial release of `@coroboros/clone`.
