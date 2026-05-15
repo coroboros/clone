@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { describe, expect, it } from 'vitest';
-import { clone } from '../src/index.js';
+import { CloneError, clone } from '../src/index.js';
 
 describe('clone', () => {
   describe('primitives', () => {
@@ -305,40 +305,40 @@ describe('clone', () => {
   });
 
   describe('unsupported objects', () => {
-    it('returns undefined for plain functions', () => {
-      expect(clone(() => undefined)).toBeUndefined();
+    it('throws CloneError for plain functions', () => {
+      expect(() => clone(() => undefined)).toThrow(CloneError);
     });
 
-    it('returns undefined for async functions', () => {
-      expect(clone(async () => undefined)).toBeUndefined();
+    it('throws CloneError for async functions', () => {
+      expect(() => clone(async () => undefined)).toThrow(CloneError);
     });
 
-    it('returns undefined for generator functions', () => {
-      expect(
+    it('throws CloneError for generator functions', () => {
+      expect(() =>
         clone(function* g() {
           yield 0;
         }),
-      ).toBeUndefined();
+      ).toThrow(CloneError);
     });
 
-    it('returns undefined for Intl objects', () => {
-      expect(clone(new Intl.Collator())).toBeUndefined();
-      expect(clone(new Intl.DateTimeFormat('en-US'))).toBeUndefined();
-      expect(
+    it('throws CloneError for Intl objects', () => {
+      expect(() => clone(new Intl.Collator())).toThrow(CloneError);
+      expect(() => clone(new Intl.DateTimeFormat('en-US'))).toThrow(CloneError);
+      expect(() =>
         clone(new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' })),
-      ).toBeUndefined();
+      ).toThrow(CloneError);
     });
 
-    it('returns undefined for Promises', () => {
-      expect(clone(new Promise(() => undefined))).toBeUndefined();
+    it('throws CloneError for Promises', () => {
+      expect(() => clone(new Promise(() => undefined))).toThrow(CloneError);
     });
 
-    it('returns undefined for WeakMap and WeakSet', () => {
-      expect(clone(new WeakMap())).toBeUndefined();
-      expect(clone(new WeakSet())).toBeUndefined();
+    it('throws CloneError for WeakMap and WeakSet', () => {
+      expect(() => clone(new WeakMap())).toThrow(CloneError);
+      expect(() => clone(new WeakSet())).toThrow(CloneError);
     });
 
-    it('returns undefined for constructor functions themselves', () => {
+    it('throws CloneError for constructor functions themselves', () => {
       const ctors = [
         Array,
         ArrayBuffer,
@@ -375,7 +375,17 @@ describe('clone', () => {
         WeakSet,
       ];
       for (const Ctor of ctors) {
-        expect(clone(Ctor)).toBeUndefined();
+        expect(() => clone(Ctor)).toThrow(CloneError);
+      }
+    });
+
+    it('attaches code "UNSUPPORTED_TYPE" on the thrown error', () => {
+      try {
+        clone(() => undefined);
+        expect.fail('expected clone to throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(CloneError);
+        expect((err as CloneError).code).toBe('UNSUPPORTED_TYPE');
       }
     });
   });

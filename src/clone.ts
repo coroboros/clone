@@ -1,7 +1,18 @@
+import { CloneError } from './error.js';
 import { exists, getType, primitives, typedArrays } from './helpers.js';
 
 export type CloneOptions = {
   ignoreUndefinedProperties?: boolean;
+};
+
+const describeUnsupported = (thing: unknown): string => {
+  if (typeof thing === 'function') {
+    const name = (thing as { name?: string }).name;
+    return name ? `function "${name}"` : 'anonymous function';
+  }
+  const ctor = (thing as { constructor?: { name?: string } } | null)?.constructor;
+  const ctorName = ctor?.name;
+  return ctorName ? `instance of ${ctorName}` : 'value of unknown type';
 };
 
 const notSupportedObjects: ReadonlySet<unknown> = new Set([
@@ -51,7 +62,7 @@ const internalClone = (
   const Constructor = getType(thing);
 
   if (!exists(Constructor)) {
-    return undefined;
+    throw new CloneError('UNSUPPORTED_TYPE', `cannot clone ${describeUnsupported(thing)}`);
   }
 
   const typeOfThing = typeof thing;
@@ -60,12 +71,8 @@ const internalClone = (
     return (thing as { valueOf: () => unknown }).valueOf();
   }
 
-  if (
-    typeOfThing === 'undefined' ||
-    typeOfThing === 'function' ||
-    notSupportedObjects.has(Constructor)
-  ) {
-    return undefined;
+  if (typeOfThing === 'function' || notSupportedObjects.has(Constructor)) {
+    throw new CloneError('UNSUPPORTED_TYPE', `cannot clone ${describeUnsupported(thing)}`);
   }
 
   const buildDescriptors = (source: object): PropertyDescriptorMap => {
@@ -208,5 +215,5 @@ const internalClone = (
     return placeholder;
   }
 
-  return undefined;
+  throw new CloneError('UNSUPPORTED_TYPE', `cannot clone ${describeUnsupported(thing)}`);
 };
