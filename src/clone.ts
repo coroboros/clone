@@ -91,19 +91,22 @@ const internalClone = (
     return visited.get(thing);
   }
 
-  const Constructor = getType(thing);
-
-  if (!exists(Constructor)) {
-    throw new CloneError('UNSUPPORTED_TYPE', `cannot clone ${describeUnsupported(thing)}`);
-  }
-
   const typeOfThing = typeof thing;
 
   if (primitives.has(typeOfThing)) {
     return (thing as { valueOf: () => unknown }).valueOf();
   }
 
-  if (typeOfThing === 'function' || notSupportedObjects.has(Constructor)) {
+  if (typeOfThing === 'function') {
+    throw new CloneError('UNSUPPORTED_TYPE', `cannot clone ${describeUnsupported(thing)}`);
+  }
+
+  // Constructor is undefined for null-prototype objects (`Object.create(null)`),
+  // which are clonable plain objects — only throw if we recognize an unsupported
+  // constructor explicitly.
+  const Constructor = getType(thing);
+
+  if (Constructor !== undefined && notSupportedObjects.has(Constructor)) {
     throw new CloneError('UNSUPPORTED_TYPE', `cannot clone ${describeUnsupported(thing)}`);
   }
 
@@ -255,9 +258,17 @@ const internalClone = (
     let placeholder: object;
     if (opts.preservePrototype) {
       const proto = Object.getPrototypeOf(source);
-      // Plain objects (proto === Object.prototype) are the hot path — skip the
-      // Object.create call and use a literal, which V8 compiles into a fast map.
-      placeholder = proto === Object.prototype || proto === null ? {} : Object.create(proto);
+      // Hot path: plain objects with Object.prototype use a literal, which V8
+      // compiles into a faster object-creation map than Object.create.
+      // Null-prototype objects need explicit Object.create(null) to preserve
+      // the prototype-less shape.
+      if (proto === Object.prototype) {
+        placeholder = {};
+      } else if (proto === null) {
+        placeholder = Object.create(null);
+      } else {
+        placeholder = Object.create(proto);
+      }
     } else {
       placeholder = {};
     }
