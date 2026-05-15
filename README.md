@@ -17,6 +17,18 @@ Deep clones objects while preserving the prototype chain, property descriptors, 
 
 </div>
 
+<!-- omit in toc -->
+## Contents
+
+- [Why this exists](#why-this-exists)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Usage](#usage)
+- [API](#api)
+- [Compared to alternatives](#compared-to-alternatives)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Why this exists
 
 `structuredClone` ships in every modern runtime. It strips the prototype chain, so class instances come back as plain objects. It drops property descriptors — non-enumerable fields, accessors, and `configurable: false` flags vanish. Boxed primitives throw. ORM entities, builders, event emitters, frozen state objects, and any custom-constructed value lose information when round-tripped.
@@ -58,30 +70,68 @@ import { clone, freeze } from '@coroboros/clone';
 const { clone, freeze } = require('@coroboros/clone');
 ```
 
+A deep copy that survives mutation and keeps the prototype:
+
 ```ts
 import { clone, freeze } from '@coroboros/clone';
 
-class Pet {
-  constructor(public name: string) {}
-  greet(): string {
-    return `hello, ${this.name}`;
+class Account {
+  constructor(public id: string, public balance: number) {}
+  withdraw(amount: number): void {
+    this.balance -= amount;
   }
 }
 
-const original = {
-  pet: new Pet('Saturn'),
-  history: new Map([['adopted', new Date(2026, 0, 1)]]),
-  tags: new Set(['cat', 'tabby']),
+const ledger = {
+  account: new Account('AC-1', 1000),
+  audit: new Map([['2026-01-01', true]]),
 };
 
-const copy = clone(original);
-copy.pet.greet();           // "hello, Saturn"
-copy.pet instanceof Pet;    // true — prototype preserved
-copy.history.get('adopted') instanceof Date; // true
+const copy = clone(ledger);
+copy.account.withdraw(250);
+copy.account.balance;            // 750
+ledger.account.balance;          // 1000 — source untouched
+copy.account instanceof Account; // true — method still callable
+copy.audit.get('2026-01-01');    // true — a real Map, not {}
+```
 
-const locked = freeze(copy);
-Object.isFrozen(locked);    // true
-Object.isFrozen(locked.pet); // true — recursive
+`lodash.cloneDeep` copies enumerable values only. `clone` also carries accessors and non-enumerable keys:
+
+```ts
+import cloneDeep from 'lodash.clonedeep';
+import { clone } from '@coroboros/clone';
+
+const cart = {
+  items: [{ price: 10 }, { price: 5 }],
+  get total() {
+    return this.items.reduce((sum, i) => sum + i.price, 0);
+  },
+};
+
+const kept = clone(cart);
+kept.items.push({ price: 100 });
+kept.total;                      // 115 — total is still a live getter
+
+const flat = cloneDeep(cart);
+flat.items.push({ price: 100 });
+flat.total;                      // 15 — the getter was frozen to its
+                                 // clone-time value; the copy is now stale
+
+const cfg = {};
+Object.defineProperty(cfg, 'secret', { value: 'k-1', enumerable: false });
+clone(cfg).secret;               // 'k-1'
+cloneDeep(cfg).secret;           // undefined — silently dropped
+```
+
+`freeze` locks the whole graph. Nested mutation throws in strict mode:
+
+```ts
+import { clone, freeze } from '@coroboros/clone';
+
+const settled = freeze(clone(ledger));
+settled.account.withdraw(50);     // TypeError in strict mode; no-op otherwise
+settled.account.balance;          // 1000
+Object.isFrozen(settled.account); // true — recursive
 ```
 
 ## API
