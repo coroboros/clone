@@ -4,7 +4,7 @@ Deep clone and deep freeze for JavaScript — prototype-aware. Preserves the pro
 
 ## Canonical rules
 
-Global rules (`~/.claude/rules/*`) inherit automatically — tech-standards, writing, find-docs, git-conventions, privacy, overrides. The path-scoped `@~/.claude/rules/changelog.md` applies when editing `CHANGELOG.md`. Git-conventions divergences are stated inline in `## Rules` below.
+Follows the Coroboros engineering global rules. Repo-specific divergences are stated inline in `## Rules` below.
 
 ## Tech Stack
 - TypeScript strict, ES modules + CJS dual build (tsdown)
@@ -47,4 +47,5 @@ Global rules (`~/.claude/rules/*`) inherit automatically — tech-standards, wri
 - Run `pnpm lint && pnpm typecheck && pnpm test` before every commit.
 - Run `pnpm bench` against `bench/baseline.md` when touching `src/clone.ts` — no regression > 10 % at fixed feature set.
 - Scoped package — `publishConfig.access = "public"` is mandatory, do not remove.
-- **Git** — branch `main`; CI owns `npm publish` exclusively (tag-push triggers `ci.yml` → reusable workflow `coroboros/ci/.github/workflows/javascript-npm-packages.yml@v0` → OIDC Trusted Publisher with `npm provenance`, never manual — manual bypasses attestation and the pre-publish gates); run `pnpm lint && pnpm typecheck && pnpm test && pnpm build` locally before tagging; tag MUST equal `package.json` version (the reusable workflow pins `package.json` to the tag automatically); bump via `pnpm version patch|minor`; release body in `gh release create` stays minimal (no install snippet unless the install command changed). All other rules in `@~/.claude/rules/git-conventions.md` apply.
+- **Publish** — OIDC Trusted Publisher + `npm provenance`. `ci.yml` forwards no npm token; never re-add one.
+- **Git** — `main`-only; branch → PR → squash-merge → tag the merge commit. The tag is the only manual step; release automation (version bump, `CHANGELOG.md`, npm publish, GitHub release) is owned by [`coroboros/ci`](https://github.com/coroboros/ci). Never hand-edit `package.json` version or `CHANGELOG.md`. Run `pnpm lint && pnpm typecheck && pnpm test && pnpm build` before tagging.
