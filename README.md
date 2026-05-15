@@ -20,9 +20,9 @@ Deep clones objects while preserving the prototype chain, property descriptors, 
 
 ## Why this exists
 
-`structuredClone` ships in every modern runtime. It discards the prototype chain (class instances become plain objects), drops property descriptors (non-enumerable, accessor, and `configurable: false` fields are gone), and throws on boxed primitives. ORM entities, builders, event emitters, frozen state objects, and any custom-constructed value lose information when round-tripped.
+`structuredClone` ships in every modern runtime. It strips the prototype chain, so class instances come back as plain objects. It drops property descriptors — non-enumerable fields, accessors, and `configurable: false` flags vanish. Boxed primitives throw. ORM entities, builders, event emitters, frozen state objects, and any custom-constructed value lose information when round-tripped.
 
-`@coroboros/clone` keeps all three. Three opt-out flags trade those guarantees for speed when the input is plain JSON-shaped data, landing in `rfdc`-grade territory without switching libraries.
+`@coroboros/clone` keeps all three. Three opt-out flags trade those guarantees for speed on plain JSON-shaped data, landing in `rfdc`-grade territory without switching libraries.
 
 ## Requirements
 
@@ -220,7 +220,7 @@ Inherits from `Error`. Supports `Error.cause` for wrapping. The `code` field is 
 | `Error` subclasses with descriptors                                           | partial           | no                 | no       | no          | yes                    |
 | Functions, Promises, `WeakMap`, `WeakSet`                                     | no                | no                 | no       | no          | no (by design)         |
 
-The market gap is the prototype chain plus property descriptors. Class instances cloned with `structuredClone` lose their prototype and become plain objects. `lodash.cloneDeep` drops descriptor flags. ORM entities, builders, event emitters, and any custom-constructed state object stay intact through `clone`.
+The market gap is the prototype chain plus property descriptors. `structuredClone` strips the prototype from class instances; they return as plain objects. `lodash.cloneDeep` drops descriptor flags. ORM entities, builders, event emitters, and any custom-constructed state object stay intact through `clone`.
 
 ## Contributing
 

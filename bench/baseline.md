@@ -78,11 +78,11 @@ non-enumerable, accessor, and `configurable: false`), and reference cycles. Thos
 three guarantees compose to call `Object.getPrototypeOf` + `Reflect.ownKeys` +
 `Reflect.getOwnPropertyDescriptor` + `Object.defineProperties` on every node.
 
-When the input is plain JSON-ish data and the caller is willing to drop those
-guarantees explicitly, `clone(value, { cycles: false, preservePrototype: false,
-copyDescriptors: false })` skips the descriptor walk and uses `for...in` — the
-"fast" column above. That column lands within ~2× of `rfdc` on plain data and
-beats `lodash.cloneDeep` on every bucket.
+When the caller drops those guarantees explicitly,
+`clone(value, { cycles: false, preservePrototype: false, copyDescriptors: false })`
+skips the descriptor walk and uses `for...in`. That is the "fast" column above.
+It lands within ~2× of `rfdc` on plain data and beats `lodash.cloneDeep`
+on every bucket.
 
 ## Going-forward target
 
