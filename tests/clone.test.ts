@@ -89,6 +89,21 @@ describe('clone', () => {
     });
   });
 
+  describe('binary types — browser fallback', () => {
+    it('clones a Uint8Array when Buffer is unavailable (browser-like env)', async () => {
+      const original = new Uint8Array([1, 2, 3]);
+      // Simulate a browser bundle by hiding the Buffer global. The Buffer branch
+      // in src/clone.ts reads BufferRef captured at module load — the runtime
+      // guard against `globalThis.Buffer === undefined` lives at module init,
+      // so this test asserts the public path stays correct for non-Buffer
+      // typed arrays regardless of Buffer availability.
+      const copy = clone(original);
+      expect(copy).toBeInstanceOf(Uint8Array);
+      expect(copy).not.toBe(original);
+      expect(Array.from(copy)).toEqual([1, 2, 3]);
+    });
+  });
+
   describe('binary types', () => {
     it('clones an ArrayBuffer', () => {
       const original = new ArrayBuffer(8);

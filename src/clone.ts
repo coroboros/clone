@@ -1,5 +1,9 @@
+import type { Buffer as NodeBuffer } from 'node:buffer';
 import { CloneError } from './error.js';
 import { exists, getType, primitives, typedArrays } from './helpers.js';
+
+const BufferRef: typeof NodeBuffer | undefined =
+  typeof globalThis.Buffer !== 'undefined' ? globalThis.Buffer : undefined;
 
 export type CloneOptions = {
   ignoreUndefinedProperties?: boolean;
@@ -139,9 +143,9 @@ const internalClone = (
     return cloned;
   }
 
-  if (Constructor === Buffer) {
-    const buf = source as Buffer;
-    const cloned = Buffer.allocUnsafe(buf.length);
+  if (BufferRef !== undefined && Constructor === BufferRef) {
+    const buf = source as NodeBuffer;
+    const cloned = BufferRef.allocUnsafe(buf.length);
     buf.copy(cloned);
     visited.set(source, cloned);
     return cloned;
