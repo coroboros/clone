@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.2 - 15/05/2026
+
+### Documentation
+- `clone` — stronger usage example (mutation + lodash divergence) + TOC (#40)
+
+
 ## v1.0.1 - 15/05/2026
 
 ### Documentation
