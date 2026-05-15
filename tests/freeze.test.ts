@@ -88,6 +88,33 @@ describe('freeze', () => {
     });
   });
 
+  describe('cycles', () => {
+    it('handles a self-referencing object without stack overflow', () => {
+      type Cyclic = { name: string; self?: Cyclic };
+      const o: Cyclic = { name: 'frozen' };
+      o.self = o;
+
+      const out = freeze(o);
+
+      expect(Object.isFrozen(out)).toBe(true);
+      expect(out.self).toBe(out);
+    });
+
+    it('handles two-step cycles', () => {
+      type A = { tag: 'A'; b?: B };
+      type B = { tag: 'B'; a?: A };
+      const a: A = { tag: 'A' };
+      const b: B = { tag: 'B' };
+      a.b = b;
+      b.a = a;
+
+      const out = freeze(a);
+
+      expect(Object.isFrozen(out)).toBe(true);
+      expect(Object.isFrozen(out.b)).toBe(true);
+    });
+  });
+
   describe('deep freezing', () => {
     it('freezes nested objects through symbol keys', () => {
       const sym = Symbol('s');

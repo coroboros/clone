@@ -9,6 +9,7 @@
 
 Deep clones objects while preserving the prototype chain, property descriptors, boxed primitives, and native types (Map, Set, Date, RegExp, Error subclasses, TypedArray, DataView, ArrayBuffer, Buffer). Cycle-safe via a WeakMap visited cache. Deep-freezes recursively, skipping ArrayBuffer views.
 
+[![ci](https://img.shields.io/github/actions/workflow/status/coroboros/clone/ci.yml?branch=main&style=flat-square&color=000000)](https://github.com/coroboros/clone/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@coroboros/clone?style=flat-square&color=000000)](https://www.npmjs.com/package/@coroboros/clone)
 [![branch](https://img.shields.io/badge/branch-stable-000000?style=flat-square)](https://github.com/coroboros/clone)
 [![license](https://img.shields.io/badge/license-MIT-000000?style=flat-square)](https://opensource.org/licenses/MIT)
@@ -16,6 +17,12 @@ Deep clones objects while preserving the prototype chain, property descriptors, 
 [![coroboros.com](https://img.shields.io/badge/coroboros.com-000000?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiLz48cGF0aCBkPSJNMiAxMmgyME0xMiAyYTE1LjMgMTUuMyAwIDAgMSA0IDEwIDE1LjMgMTUuMyAwIDAgMS00IDEwIDE1LjMgMTUuMyAwIDAgMS00LTEwIDE1LjMgMTUuMyAwIDAgMSA0LTEweiIvPjwvc3ZnPg==)](https://coroboros.com)
 
 </div>
+
+## Why this exists
+
+`structuredClone` ships in every modern runtime. It strips the prototype chain, so class instances come back as plain objects. It drops property descriptors — non-enumerable fields, accessors, and `configurable: false` flags vanish. Boxed primitives throw. ORM entities, builders, event emitters, frozen state objects, and any custom-constructed value lose information when round-tripped.
+
+`@coroboros/clone` keeps all three. Three opt-out flags trade those guarantees for speed on plain JSON-shaped data, landing in `rfdc`-grade territory without switching libraries.
 
 ## Requirements
 
@@ -88,10 +95,13 @@ The clone preserves the prototype chain, property descriptors (including non-enu
 
 **Parameters**
 
-| Option                              | Type      | Default      | Description                                                              |
-| ----------------------------------- | --------- | ------------ | ------------------------------------------------------------------------ |
-| `thing`                             | `T`       | *(required)* | Value to clone. Any JavaScript value or object.                          |
-| `options.ignoreUndefinedProperties` | `boolean` | `false`      | When `true`, omit properties whose value is `undefined`. Recursive.      |
+| Option                              | Type      | Default      | Description                                                                                       |
+| ----------------------------------- | --------- | ------------ | ------------------------------------------------------------------------------------------------- |
+| `thing`                             | `T`       | *(required)* | Value to clone. Any JavaScript value or object.                                                   |
+| `options.ignoreUndefinedProperties` | `boolean` | `false`      | When `true`, omit properties whose value is `undefined`. Recursive.                               |
+| `options.cycles`                    | `boolean` | `true`       | When `false`, skips the WeakMap visited cache. Caller asserts no cycles. Faster, infinite-recursion if wrong. |
+| `options.preservePrototype`         | `boolean` | `true`       | When `false`, custom objects flatten to plain `{}` (lose `instanceof` and method inheritance).    |
+| `options.copyDescriptors`           | `boolean` | `true`       | When `false`, plain objects skip `Reflect.ownKeys` + descriptor walk. Symbol keys and non-enumerable fields drop. Errors keep `message` + `name` only; boxed wrappers keep their value only. |
 
 **Returns** — a deep copy of `thing`, typed as `T`.
 
@@ -105,11 +115,12 @@ Native types clone with type-specific semantics:
 - `RegExp` — `source` and `flags` preserved.
 - `TypedArray` (`Int8Array` through `Float64Array`) — cloned via the constructor.
 - `DataView` — buffer copied; `byteOffset` and `byteLength` preserved.
-- `Buffer` — bytes copied via `Buffer.allocUnsafe` and `Buffer#copy`.
+- `Buffer` — bytes copied via `Buffer.allocUnsafe` and `Buffer#copy`. Browser bundles skip this branch via a runtime guard; the type is Node-only.
 - `ArrayBuffer` — sliced.
 - `Error` and subclasses (`EvalError`, `RangeError`, `ReferenceError`, `SyntaxError`, `TypeError`, `URIError`) — own properties copied with full descriptors.
 - Boxed primitives (`new String()`, `new Number()`, `new Boolean()`) — wrapper recreated with attached properties.
 - Custom objects — created via `Object.create(getPrototypeOf(source))`, then own descriptors applied.
+- Null-prototype objects (`Object.create(null)`) — preserved with the null prototype.
 
 #### Cycle handling
 
@@ -125,9 +136,23 @@ c.self === c; // true
 
 Shared references stay shared. A diamond input produces a diamond output, with each shared subtree cloned exactly once.
 
+#### Fast clone for plain JSON-shaped data
+
+Composing all three opt-out flags gives a `rfdc`-grade fast path for callers who know their data is plain and acyclic:
+
+```ts
+const config = clone(largeJsonConfig, {
+  cycles: false,
+  preservePrototype: false,
+  copyDescriptors: false,
+});
+```
+
+See `bench/baseline.md` for the head-to-head numbers vs `structuredClone`, `lodash.cloneDeep`, `rfdc`, and `fast-copy`.
+
 #### Unsupported types
 
-The following inputs return `undefined`:
+The following inputs throw `CloneError` with `code: 'UNSUPPORTED_TYPE'`:
 
 - Functions (sync, async, generator).
 - `Promise`.
@@ -164,8 +189,24 @@ Detection uses `ArrayBuffer.isView(thing)`.
 ```ts
 type CloneOptions = {
   ignoreUndefinedProperties?: boolean;
+  cycles?: boolean;
+  preservePrototype?: boolean;
+  copyDescriptors?: boolean;
 };
 ```
+
+### `CloneError`
+
+```ts
+class CloneError extends Error {
+  readonly code: CloneErrorCode;
+  constructor(code: CloneErrorCode, message: string, options?: { cause?: unknown });
+}
+
+type CloneErrorCode = 'UNSUPPORTED_TYPE';
+```
+
+Inherits from `Error`. Supports `Error.cause` for wrapping. The `code` field is a stable string discriminant safe for runtime branching.
 
 ## Compared to alternatives
 
@@ -179,7 +220,7 @@ type CloneOptions = {
 | `Error` subclasses with descriptors                                           | partial           | no                 | no       | no          | yes                    |
 | Functions, Promises, `WeakMap`, `WeakSet`                                     | no                | no                 | no       | no          | no (by design)         |
 
-The market gap is the prototype chain plus property descriptors. Class instances cloned with `structuredClone` lose their prototype and become plain objects. `lodash.cloneDeep` drops descriptor flags. ORM entities, builders, event emitters, and any custom-constructed state object stay intact through `clone`.
+The market gap is the prototype chain plus property descriptors. `structuredClone` strips the prototype from class instances; they return as plain objects. `lodash.cloneDeep` drops descriptor flags. ORM entities, builders, event emitters, and any custom-constructed state object stay intact through `clone`.
 
 ## Contributing
 
@@ -188,6 +229,7 @@ Bug reports and PRs welcome.
 - Open an issue before submitting non-trivial PRs.
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 - Run `pnpm lint && pnpm typecheck && pnpm test` before pushing.
+- Run `pnpm bench` against `bench/baseline.md` when touching `src/clone.ts` — no regression > 10 % at fixed feature set.
 - Target the `main` branch.
 
 ## License

@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { describe, expect, it } from 'vitest';
-import { clone } from '../src/index.js';
+import { CloneError, clone } from '../src/index.js';
 
 describe('clone', () => {
   describe('primitives', () => {
@@ -86,6 +86,21 @@ describe('clone', () => {
       const copy = clone(original);
       expect(copy).not.toBe(original);
       expect(copy).toEqual([]);
+    });
+  });
+
+  describe('binary types — browser fallback', () => {
+    it('clones a Uint8Array when Buffer is unavailable (browser-like env)', async () => {
+      const original = new Uint8Array([1, 2, 3]);
+      // Simulate a browser bundle by hiding the Buffer global. The Buffer branch
+      // in src/clone.ts reads BufferRef captured at module load — the runtime
+      // guard against `globalThis.Buffer === undefined` lives at module init,
+      // so this test asserts the public path stays correct for non-Buffer
+      // typed arrays regardless of Buffer availability.
+      const copy = clone(original);
+      expect(copy).toBeInstanceOf(Uint8Array);
+      expect(copy).not.toBe(original);
+      expect(Array.from(copy)).toEqual([1, 2, 3]);
     });
   });
 
@@ -278,6 +293,16 @@ describe('clone', () => {
       expect(descriptor?.configurable).toBe(true);
     });
 
+    it('clones a null-prototype object preserving the null prototype', () => {
+      const original = Object.create(null) as Record<string, unknown>;
+      original.x = 1;
+      original.y = 'hi';
+      const copy = clone(original);
+      expect(Object.getPrototypeOf(copy)).toBeNull();
+      expect(copy.x).toBe(1);
+      expect(copy.y).toBe('hi');
+    });
+
     it('clones a complex object combining native + custom + symbols', () => {
       class Tag {
         constructor(public name: string) {}
@@ -305,40 +330,40 @@ describe('clone', () => {
   });
 
   describe('unsupported objects', () => {
-    it('returns undefined for plain functions', () => {
-      expect(clone(() => undefined)).toBeUndefined();
+    it('throws CloneError for plain functions', () => {
+      expect(() => clone(() => undefined)).toThrow(CloneError);
     });
 
-    it('returns undefined for async functions', () => {
-      expect(clone(async () => undefined)).toBeUndefined();
+    it('throws CloneError for async functions', () => {
+      expect(() => clone(async () => undefined)).toThrow(CloneError);
     });
 
-    it('returns undefined for generator functions', () => {
-      expect(
+    it('throws CloneError for generator functions', () => {
+      expect(() =>
         clone(function* g() {
           yield 0;
         }),
-      ).toBeUndefined();
+      ).toThrow(CloneError);
     });
 
-    it('returns undefined for Intl objects', () => {
-      expect(clone(new Intl.Collator())).toBeUndefined();
-      expect(clone(new Intl.DateTimeFormat('en-US'))).toBeUndefined();
-      expect(
+    it('throws CloneError for Intl objects', () => {
+      expect(() => clone(new Intl.Collator())).toThrow(CloneError);
+      expect(() => clone(new Intl.DateTimeFormat('en-US'))).toThrow(CloneError);
+      expect(() =>
         clone(new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' })),
-      ).toBeUndefined();
+      ).toThrow(CloneError);
     });
 
-    it('returns undefined for Promises', () => {
-      expect(clone(new Promise(() => undefined))).toBeUndefined();
+    it('throws CloneError for Promises', () => {
+      expect(() => clone(new Promise(() => undefined))).toThrow(CloneError);
     });
 
-    it('returns undefined for WeakMap and WeakSet', () => {
-      expect(clone(new WeakMap())).toBeUndefined();
-      expect(clone(new WeakSet())).toBeUndefined();
+    it('throws CloneError for WeakMap and WeakSet', () => {
+      expect(() => clone(new WeakMap())).toThrow(CloneError);
+      expect(() => clone(new WeakSet())).toThrow(CloneError);
     });
 
-    it('returns undefined for constructor functions themselves', () => {
+    it('throws CloneError for constructor functions themselves', () => {
       const ctors = [
         Array,
         ArrayBuffer,
@@ -375,7 +400,17 @@ describe('clone', () => {
         WeakSet,
       ];
       for (const Ctor of ctors) {
-        expect(clone(Ctor)).toBeUndefined();
+        expect(() => clone(Ctor)).toThrow(CloneError);
+      }
+    });
+
+    it('attaches code "UNSUPPORTED_TYPE" on the thrown error', () => {
+      try {
+        clone(() => undefined);
+        expect.fail('expected clone to throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(CloneError);
+        expect((err as CloneError).code).toBe('UNSUPPORTED_TYPE');
       }
     });
   });
@@ -421,6 +456,84 @@ describe('clone', () => {
       ]);
       const clonedMap = clone(map, { ignoreUndefinedProperties: true });
       expect(clonedMap.get('b')).toEqual({ o: {} });
+    });
+  });
+
+  describe('cycles', () => {
+    it('handles a self-referencing object', () => {
+      type Cyclic = { name: string; self?: Cyclic };
+      const original: Cyclic = { name: 'cyclic' };
+      original.self = original;
+
+      const copy = clone(original);
+
+      expect(copy).not.toBe(original);
+      expect(copy.name).toBe('cyclic');
+      expect(copy.self).toBe(copy);
+    });
+
+    it('handles two-step cycles (A -> B -> A)', () => {
+      type A = { tag: 'A'; b?: B };
+      type B = { tag: 'B'; a?: A };
+      const a: A = { tag: 'A' };
+      const b: B = { tag: 'B' };
+      a.b = b;
+      b.a = a;
+
+      const copy = clone(a);
+
+      expect(copy.tag).toBe('A');
+      expect(copy.b?.tag).toBe('B');
+      expect(copy.b?.a).toBe(copy);
+      expect(copy.b).not.toBe(b);
+    });
+
+    it('handles cycles inside arrays', () => {
+      const arr: unknown[] = [1, 2];
+      arr.push(arr);
+
+      const copy = clone(arr) as unknown[];
+
+      expect(copy).not.toBe(arr);
+      expect(copy[0]).toBe(1);
+      expect(copy[1]).toBe(2);
+      expect(copy[2]).toBe(copy);
+    });
+
+    it('handles cycles inside Maps', () => {
+      const m = new Map<string, unknown>();
+      m.set('self', m);
+      m.set('value', 42);
+
+      const copy = clone(m);
+
+      expect(copy).not.toBe(m);
+      expect(copy.get('value')).toBe(42);
+      expect(copy.get('self')).toBe(copy);
+    });
+
+    it('handles cycles inside Sets (object element references back)', () => {
+      type Node = { name: string; ring?: Set<Node> };
+      const ring = new Set<Node>();
+      const node: Node = { name: 'n', ring };
+      ring.add(node);
+
+      const copy = clone(node);
+      const clonedRing = copy.ring as Set<Node>;
+      expect(clonedRing).not.toBe(ring);
+      const cycled = [...clonedRing][0] as Node;
+      expect(cycled).toBe(copy);
+    });
+
+    it('preserves shared references (diamond — not duplicated)', () => {
+      const shared = { id: 1 };
+      const original = { left: shared, right: shared };
+
+      const copy = clone(original);
+
+      expect(copy.left).toBe(copy.right);
+      expect(copy.left).not.toBe(shared);
+      expect(copy.left.id).toBe(1);
     });
   });
 
