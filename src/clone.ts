@@ -7,6 +7,16 @@ const BufferRef: typeof NodeBuffer | undefined =
 
 export type CloneOptions = {
   ignoreUndefinedProperties?: boolean;
+  cycles?: boolean;
+  preservePrototype?: boolean;
+  copyDescriptors?: boolean;
+};
+
+type InternalOpts = {
+  ignoreUndefinedProperties: boolean;
+  cycles: boolean;
+  preservePrototype: boolean;
+  copyDescriptors: boolean;
 };
 
 const describeUnsupported = (thing: unknown): string => {
@@ -47,19 +57,37 @@ const copyWithDescriptors: ReadonlySet<unknown> = new Set([
 type AnyCtor = new (...args: never[]) => unknown;
 type AnyTypedArrayCtor = new (source: ArrayLike<number> | ArrayBufferLike) => unknown;
 
-export const clone = <T>(thing: T, options?: CloneOptions): T =>
-  internalClone(thing, options?.ignoreUndefinedProperties === true, new WeakMap()) as T;
+export const clone = <T>(thing: T, options?: CloneOptions): T => {
+  const opts: InternalOpts = {
+    ignoreUndefinedProperties: options?.ignoreUndefinedProperties === true,
+    cycles: options?.cycles !== false,
+    preservePrototype: options?.preservePrototype !== false,
+    copyDescriptors: options?.copyDescriptors !== false,
+  };
+  return internalClone(thing, opts, new WeakMap()) as T;
+};
+
+const remember = (
+  visited: WeakMap<object, unknown>,
+  source: object,
+  cloned: unknown,
+  cycles: boolean,
+): void => {
+  if (cycles) {
+    visited.set(source, cloned);
+  }
+};
 
 const internalClone = (
   thing: unknown,
-  ignoreUndefinedProperties: boolean,
+  opts: InternalOpts,
   visited: WeakMap<object, unknown>,
 ): unknown => {
   if (!exists(thing)) {
     return thing;
   }
 
-  if (typeof thing === 'object' && thing !== null && visited.has(thing)) {
+  if (opts.cycles && typeof thing === 'object' && thing !== null && visited.has(thing)) {
     return visited.get(thing);
   }
 
@@ -86,12 +114,12 @@ const internalClone = (
       if (descriptor === undefined) {
         continue;
       }
-      if (ignoreUndefinedProperties && descriptor.value === undefined) {
+      if (opts.ignoreUndefinedProperties && descriptor.value === undefined) {
         continue;
       }
       const next: PropertyDescriptor = { ...descriptor };
       if ('value' in descriptor) {
-        next.value = internalClone(descriptor.value, ignoreUndefinedProperties, visited);
+        next.value = internalClone(descriptor.value, opts, visited);
       }
       descriptors[key as PropertyKey] = next;
     }
@@ -101,25 +129,25 @@ const internalClone = (
   const source = thing as object;
 
   if (Constructor === Array) {
-    const cloned: unknown[] = [];
-    visited.set(source, cloned);
-    (source as unknown[]).forEach((value, key) => {
-      if (!ignoreUndefinedProperties || value !== undefined) {
-        cloned[key] = internalClone(value, ignoreUndefinedProperties, visited);
+    const src = source as unknown[];
+    const len = src.length;
+    const cloned: unknown[] = new Array(len);
+    remember(visited, source, cloned, opts.cycles);
+    for (let i = 0; i < len; i += 1) {
+      const value = src[i];
+      if (!opts.ignoreUndefinedProperties || value !== undefined) {
+        cloned[i] = internalClone(value, opts, visited);
       }
-    });
+    }
     return cloned;
   }
 
   if (Constructor === Map) {
     const cloned = new Map<unknown, unknown>();
-    visited.set(source, cloned);
+    remember(visited, source, cloned, opts.cycles);
     (source as Map<unknown, unknown>).forEach((value, key) => {
-      if (!ignoreUndefinedProperties || value !== undefined) {
-        cloned.set(
-          internalClone(key, ignoreUndefinedProperties, visited),
-          internalClone(value, ignoreUndefinedProperties, visited),
-        );
+      if (!opts.ignoreUndefinedProperties || value !== undefined) {
+        cloned.set(internalClone(key, opts, visited), internalClone(value, opts, visited));
       }
     });
     return cloned;
@@ -127,10 +155,10 @@ const internalClone = (
 
   if (Constructor === Set) {
     const cloned = new Set<unknown>();
-    visited.set(source, cloned);
+    remember(visited, source, cloned, opts.cycles);
     (source as Set<unknown>).forEach((value) => {
-      if (!ignoreUndefinedProperties || value !== undefined) {
-        cloned.add(internalClone(value, ignoreUndefinedProperties, visited));
+      if (!opts.ignoreUndefinedProperties || value !== undefined) {
+        cloned.add(internalClone(value, opts, visited));
       }
     });
     return cloned;
@@ -139,7 +167,7 @@ const internalClone = (
   if (Constructor === DataView) {
     const view = source as DataView;
     const cloned = new DataView(view.buffer.slice(0), view.byteOffset, view.byteLength);
-    visited.set(source, cloned);
+    remember(visited, source, cloned, opts.cycles);
     return cloned;
   }
 
@@ -147,47 +175,49 @@ const internalClone = (
     const buf = source as NodeBuffer;
     const cloned = BufferRef.allocUnsafe(buf.length);
     buf.copy(cloned);
-    visited.set(source, cloned);
+    remember(visited, source, cloned, opts.cycles);
     return cloned;
   }
 
   if (Constructor === ArrayBuffer) {
     const cloned = (source as ArrayBuffer).slice(0);
-    visited.set(source, cloned);
+    remember(visited, source, cloned, opts.cycles);
     return cloned;
   }
 
   if (Constructor === Date) {
     const cloned = new Date((source as Date).valueOf());
-    visited.set(source, cloned);
+    remember(visited, source, cloned, opts.cycles);
     return cloned;
   }
 
   if (Constructor === RegExp) {
     const rx = source as RegExp;
     const cloned = new RegExp(rx.source, rx.flags);
-    visited.set(source, cloned);
+    remember(visited, source, cloned, opts.cycles);
     return cloned;
   }
 
   if (typedArrays.has(Constructor)) {
     const Ctor = Constructor as AnyTypedArrayCtor;
     const cloned = new Ctor(source as ArrayLike<number>);
-    visited.set(source, cloned);
+    remember(visited, source, cloned, opts.cycles);
     return cloned;
   }
 
   if (Constructor === String) {
     const original = source as { valueOf: () => string };
     const cloned = new String(original.valueOf());
-    visited.set(source, cloned as object);
-    const descriptors = buildDescriptors(source);
-    // length is auto-managed by the String wrapper and cannot be redefined.
-    for (const key of Object.keys(descriptors)) {
-      if (key !== 'length') {
-        const descriptor = descriptors[key];
-        if (descriptor !== undefined) {
-          Object.defineProperty(cloned, key, descriptor);
+    remember(visited, source, cloned as object, opts.cycles);
+    if (opts.copyDescriptors) {
+      const descriptors = buildDescriptors(source);
+      // length is auto-managed by the String wrapper and cannot be redefined.
+      for (const key of Object.keys(descriptors)) {
+        if (key !== 'length') {
+          const descriptor = descriptors[key];
+          if (descriptor !== undefined) {
+            Object.defineProperty(cloned, key, descriptor);
+          }
         }
       }
     }
@@ -197,25 +227,46 @@ const internalClone = (
   if (Constructor === Number || Constructor === Boolean) {
     const Ctor = Constructor as new (value: unknown) => unknown;
     const cloned = new Ctor((source as { valueOf: () => unknown }).valueOf());
-    visited.set(source, cloned as object);
-    const descriptors = buildDescriptors(source);
-    Object.defineProperties(cloned as object, descriptors);
+    remember(visited, source, cloned as object, opts.cycles);
+    if (opts.copyDescriptors) {
+      Object.defineProperties(cloned as object, buildDescriptors(source));
+    }
     return cloned;
   }
 
   if (copyWithDescriptors.has(Constructor)) {
     const Ctor = Constructor as AnyCtor;
     const cloned = new Ctor() as object;
-    visited.set(source, cloned);
-    Object.defineProperties(cloned, buildDescriptors(source));
+    remember(visited, source, cloned, opts.cycles);
+    if (opts.copyDescriptors) {
+      Object.defineProperties(cloned, buildDescriptors(source));
+    } else {
+      const err = source as Error;
+      const target = cloned as Error;
+      target.message = err.message;
+      target.name = err.name;
+    }
     return cloned;
   }
 
   if (typeOfThing === 'object') {
-    const placeholder = Object.create(Object.getPrototypeOf(source)) as object;
-    visited.set(source, placeholder);
-    const descriptors = buildDescriptors(source);
-    Object.defineProperties(placeholder, descriptors);
+    const placeholder = (
+      opts.preservePrototype ? Object.create(Object.getPrototypeOf(source)) : {}
+    ) as object;
+    remember(visited, source, placeholder, opts.cycles);
+    if (opts.copyDescriptors) {
+      Object.defineProperties(placeholder, buildDescriptors(source));
+    } else {
+      const target = placeholder as Record<PropertyKey, unknown>;
+      for (const key in source) {
+        if (Object.hasOwn(source, key)) {
+          const value = (source as Record<PropertyKey, unknown>)[key];
+          if (!opts.ignoreUndefinedProperties || value !== undefined) {
+            target[key] = internalClone(value, opts, visited);
+          }
+        }
+      }
+    }
     return placeholder;
   }
 
