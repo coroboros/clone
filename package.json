@@ -1,6 +1,6 @@
 {
   "name": "@coroboros/clone",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Deep clone and deep freeze for JavaScript — prototype-aware.",
   "type": "module",
   "sideEffects": false,
