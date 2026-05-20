@@ -136,25 +136,74 @@ Object.isFrozen(settled.account); // true — recursive
 
 ## API
 
-### `clone<T>(thing: T, options?: CloneOptions): T`
+### Types
 
-Returns a deep copy of `thing`. The return type matches the input type via generic inference.
+<details>
+<summary><code>CloneOptions</code></summary>
 
-The clone preserves the prototype chain, property descriptors (including non-enumerable, accessor, and `configurable: false` properties), boxed primitive wrappers, and symbol-keyed properties.
+<br>
+
+Per-call overrides for [`clone`](#cloning). Every field is optional with sensible defaults.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ignoreUndefinedProperties` | `boolean` | `false` | When `true`, omit properties whose value is `undefined`. Recursive. |
+| `cycles` | `boolean` | `true` | When `false`, skips the WeakMap visited cache. Caller asserts no cycles. Faster, infinite-recursion if wrong. |
+| `preservePrototype` | `boolean` | `true` | When `false`, custom objects flatten to plain `{}` (lose `instanceof` and method inheritance). |
+| `copyDescriptors` | `boolean` | `true` | When `false`, plain objects skip `Reflect.ownKeys` + descriptor walk. Symbol keys and non-enumerable fields drop. Errors keep `message` + `name` only; boxed wrappers keep their value only. |
+
+</details>
+
+<details>
+<summary><code>CloneError</code></summary>
+
+<br>
+
+Thrown by [`clone`](#cloning) for inputs it cannot reproduce. Inherits from `Error`, supports `Error.cause` for wrapping.
+
+```ts
+class CloneError extends Error {
+  readonly code: CloneErrorCode;
+  constructor(code: CloneErrorCode, message: string, options?: { cause?: unknown });
+}
+```
+
+The `code` field is a stable string discriminant safe for runtime branching.
+
+</details>
+
+<details>
+<summary><code>CloneErrorCode</code></summary>
+
+<br>
+
+```ts
+type CloneErrorCode = 'UNSUPPORTED_TYPE';
+```
+
+</details>
+
+### Cloning
+
+<details>
+<summary><code>clone(thing, options?)</code></summary>
+
+<br>
+
+Returns a deep copy of `thing`. The return type matches the input type via generic inference. The clone preserves the prototype chain, property descriptors (including non-enumerable, accessor, and `configurable: false` properties), boxed primitive wrappers, and symbol-keyed properties.
 
 **Parameters**
 
-| Option                              | Type      | Default      | Description                                                                                       |
-| ----------------------------------- | --------- | ------------ | ------------------------------------------------------------------------------------------------- |
-| `thing`                             | `T`       | *(required)* | Value to clone. Any JavaScript value or object.                                                   |
-| `options.ignoreUndefinedProperties` | `boolean` | `false`      | When `true`, omit properties whose value is `undefined`. Recursive.                               |
-| `options.cycles`                    | `boolean` | `true`       | When `false`, skips the WeakMap visited cache. Caller asserts no cycles. Faster, infinite-recursion if wrong. |
-| `options.preservePrototype`         | `boolean` | `true`       | When `false`, custom objects flatten to plain `{}` (lose `instanceof` and method inheritance).    |
-| `options.copyDescriptors`           | `boolean` | `true`       | When `false`, plain objects skip `Reflect.ownKeys` + descriptor walk. Symbol keys and non-enumerable fields drop. Errors keep `message` + `name` only; boxed wrappers keep their value only. |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `thing` | `T` | *(required)* | Value to clone. Any JavaScript value or object. |
+| `options?` | [`CloneOptions`](#types) | `{}` | Per-call overrides. See the type for each flag. |
 
-**Returns** — a deep copy of `thing`, typed as `T`.
+**Returns** — `T`. A deep copy of `thing`, typed as `T`.
 
-#### Supported types
+**Throws** — [`CloneError`](#types) with `code: 'UNSUPPORTED_TYPE'` for functions (sync, async, generator), `Promise`, `Intl.Collator` / `Intl.DateTimeFormat` / `Intl.NumberFormat` / `Intl.PluralRules`, `WeakMap`, `WeakSet`, and bare constructor references (e.g. `clone(Array)`). `undefined`, `null`, and `NaN` clone to themselves.
+
+**Supported types**
 
 Native types clone with type-specific semantics:
 
@@ -171,61 +220,52 @@ Native types clone with type-specific semantics:
 - Custom objects — created via `Object.create(getPrototypeOf(source))`, then own descriptors applied.
 - Null-prototype objects (`Object.create(null)`) — preserved with the null prototype.
 
-#### Cycle handling
+**Cycle handling**
 
-A `WeakMap` visited cache preserves circular and shared references. Cyclic inputs round-trip correctly:
+A `WeakMap` visited cache preserves circular and shared references. Cyclic inputs round-trip correctly. Shared references stay shared — a diamond input produces a diamond output, with each shared subtree cloned exactly once.
+
+**Fast clone for plain JSON-shaped data**
+
+Composing all three opt-out flags (`cycles: false`, `preservePrototype: false`, `copyDescriptors: false`) gives a `rfdc`-grade fast path for callers who know their data is plain and acyclic. See [`bench/baseline.md`](bench/baseline.md) for head-to-head numbers vs `structuredClone`, `lodash.cloneDeep`, `rfdc`, and `fast-copy`.
+
+**Examples**
 
 ```ts
+clone(new Date());                            // → new Date with the same valueOf
+clone(new Map([['k', 1]]));                   // → new Map with the same entries
+clone({ get total() { return 0; } }).total;   // → 0 — getter preserved
+
 const o: Record<string, unknown> = { name: 'cyclic' };
 o.self = o;
+clone(o).self === clone(o);                   // false — fresh copy per call
 
-const c = clone(o);
-c.self === c; // true
-```
-
-Shared references stay shared. A diamond input produces a diamond output, with each shared subtree cloned exactly once.
-
-#### Fast clone for plain JSON-shaped data
-
-Composing all three opt-out flags gives a `rfdc`-grade fast path for callers who know their data is plain and acyclic:
-
-```ts
-const config = clone(largeJsonConfig, {
+clone(largeJsonConfig, {                      // → ~rfdc speed on plain data
   cycles: false,
   preservePrototype: false,
   copyDescriptors: false,
 });
 ```
 
-See `bench/baseline.md` for the head-to-head numbers vs `structuredClone`, `lodash.cloneDeep`, `rfdc`, and `fast-copy`.
+</details>
 
-#### Unsupported types
+<details>
+<summary><code>freeze(thing)</code></summary>
 
-The following inputs throw `CloneError` with `code: 'UNSUPPORTED_TYPE'`:
-
-- Functions (sync, async, generator).
-- `Promise`.
-- `Intl.Collator`, `Intl.DateTimeFormat`, `Intl.NumberFormat`, `Intl.PluralRules`.
-- `WeakMap`, `WeakSet`.
-- Constructor functions themselves (e.g. `clone(Array)`).
-
-`undefined`, `null`, and `NaN` clone to themselves.
-
-### `freeze<T>(thing: T): T`
+<br>
 
 Recursive deep freeze. Walks own properties, freezes each value, then freezes the container. A `WeakSet` visited cache makes cyclic inputs safe.
 
 **Parameters**
 
-| Option  | Type | Description       |
-| ------- | ---- | ----------------- |
-| `thing` | `T`  | Value to freeze.  |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `thing` | `T` | *(required)* | Value to freeze. |
 
-**Returns** — the same value, frozen, typed as `T`.
+**Returns** — `T`. The same value, frozen, typed as `T`.
 
-#### Skipped types
+**Skipped types**
 
-`Object.freeze` throws on `ArrayBufferView` instances with elements. `freeze` leaves the following **unfrozen**:
+`Object.freeze` throws on `ArrayBufferView` instances with elements. `freeze` leaves the following unfrozen:
 
 - All `TypedArray` subclasses (`Int8Array` through `Float64Array`, plus `BigInt64Array` / `BigUint64Array`).
 - `DataView`.
@@ -233,29 +273,18 @@ Recursive deep freeze. Walks own properties, freezes each value, then freezes th
 
 Detection uses `ArrayBuffer.isView(thing)`.
 
-### `CloneOptions`
+**Examples**
 
 ```ts
-type CloneOptions = {
-  ignoreUndefinedProperties?: boolean;
-  cycles?: boolean;
-  preservePrototype?: boolean;
-  copyDescriptors?: boolean;
-};
+const settled = freeze(clone(ledger));
+Object.isFrozen(settled);                 // true
+Object.isFrozen(settled.account);         // true — recursive
+settled.account.balance = 0;              // TypeError in strict mode
+
+freeze(new Int8Array([1, 2]));            // → returned unchanged (would throw otherwise)
 ```
 
-### `CloneError`
-
-```ts
-class CloneError extends Error {
-  readonly code: CloneErrorCode;
-  constructor(code: CloneErrorCode, message: string, options?: { cause?: unknown });
-}
-
-type CloneErrorCode = 'UNSUPPORTED_TYPE';
-```
-
-Inherits from `Error`. Supports `Error.cause` for wrapping. The `code` field is a stable string discriminant safe for runtime branching.
+</details>
 
 ## Compared to alternatives
 
