@@ -11,7 +11,7 @@ Prototype-aware deep clone and deep freeze for Node.js 22+, with zero runtime de
 
 ## Validation
 
-Use the scripts in `package.json`. Source or dependency changes require `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build`; documentation-only edits need Markdown and reference checks.
+Source or dependency changes require `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build`.
 
 For changes to `src/clone.ts`, run `pnpm bench` against the bucket budgets in `bench/baseline.md`. Reuse passing results while the tested inputs remain unchanged.
 
